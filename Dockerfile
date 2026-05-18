@@ -61,6 +61,13 @@ RUN cp /opt/tmp/sybase-ase.rs /opt/sybase/ASE-16_0/sybase-ase.rs
 RUN source /opt/sybase/SYBASE.sh \
  && /opt/sybase/ASE-16_0/bin/srvbuildres -r /opt/sybase/ASE-16_0/sybase-ase.rs
 
+# Copy Backup Server resource file
+RUN cp /opt/tmp/sybase-bs.rs /opt/sybase/ASE-16_0/sybase-bs.rs
+
+# Build Backup Server
+RUN source /opt/sybase/SYBASE.sh \
+ && /opt/sybase/ASE-16_0/bin/srvbuildres -r /opt/sybase/ASE-16_0/sybase-bs.rs
+
 # Change the Sybase interface
 # Set the Sybase startup script in entrypoint.sh
 
@@ -79,7 +86,7 @@ ENTRYPOINT ["/sybase-entrypoint.sh"]
 
 # CMD []
 
-EXPOSE 5000
+EXPOSE 5000 5001
 
 # Remove tmp
 RUN find /opt/tmp/ -type f | xargs -L1 rm -f
