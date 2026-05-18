@@ -43,7 +43,7 @@ CI (`.github/workflows/build.yml`) runs the same `docker build` + smoke test on 
 
 The Dockerfile is the whole project — there is no application code. What it actually does, in order:
 
-1. Pull the ASE tarball, extract to `/opt/tmp/`, copy everything under `assets/` to `/opt/tmp/` as well.
+1. Pull the ASE tarball from the URL in `ARG ASE_SUITE_URL` (overridable with `--build-arg ASE_SUITE_URL=…`, or via the repo variable `vars.ASE_SUITE_URL` in CI), extract to `/opt/tmp/`, copy everything under `assets/` to `/opt/tmp/` as well. The default URL is what SAP serves at the time of the commit; it expires periodically — see README "Refreshing the SAP installer URL" for the recovery procedure.
 2. Install RPMs (libaio, gtk2, glibc i686 — `--nodeps` because centos:7 satisfies the rest).
 3. Run the SAP `setup.bin` installer in silent mode driven by `assets/sybase-response.txt` (`SY_CONFIG_*_SERVER=false` everywhere — no server is configured by the installer).
 4. **`srvbuildres -r sybase-ase.rs`** generates the dataserver: writes `master.dat`, `MYSYBASE.cfg`, `install/RUN_MYSYBASE`, `install/MYSYBASE.log`, etc. The values in `assets/sybase-ase.rs` (page size, device paths/sizes, sa password, default backup server name) define the server.

@@ -57,6 +57,24 @@ Override the developer user / database at `docker run`:
           -v /path/to/sybase_licenses:/opt/sybase/SYSAM-2_0/licenses \
           --name my-sybase sybase
 
+## Refreshing the SAP installer URL
+
+The Dockerfile downloads the SAP ASE 16 Developer Edition tarball from a CloudFront URL that SAP rotates from time to time. The default in `Dockerfile` (`ARG ASE_SUITE_URL=…`) is what was valid at the time of writing; if a build starts failing with a curl error or `tar: stdin: not in gzip format`, the URL has changed and you need to refresh it.
+
+To get a fresh link, go to the **[SAP ASE Developer Edition trial page](https://www.sap.com/products/data-cloud/sybase-ase/trial.html)**, accept the licence and copy the **Linux** download URL (typically `https://d1cuw2q49dpd0p.cloudfront.net/ASE16/…/ASE_Suite.linuxamd64.tgz`).
+
+Override the URL locally at build time:
+
+        docker build --build-arg ASE_SUITE_URL=<new URL> -t sybase .
+
+Or, in CI, set this **Repository variable** (Settings → Secrets and variables → Actions → Variables) so the workflow keeps building without touching the Dockerfile:
+
+| Type | Name | Example |
+| --- | --- | --- |
+| Variable | `ASE_SUITE_URL` | `https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz` |
+
+When `ASE_SUITE_URL` is unset on the repo, the workflow falls back to the default URL baked into the `Dockerfile`.
+
 ## Publishing to Docker Hub
 
 The GitHub Actions workflow (`.github/workflows/build.yml`) pushes the image to Docker Hub after a successful build, on every push to a branch (not on pull requests). The tag is the branch name, except `main` and `master` which both publish as `latest`. Slashes in branch names are sanitized to dashes (`feature/foo` → `feature-foo`).
@@ -79,6 +97,6 @@ Then pull the published image:
 
 ## SAP ASE Developer Edition reference
 
-- https://go.sap.com/cmp/syb/crm-xu15-int-asewindm/typ.html
-- Linux: http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Linux16SP02/ASE_Suite.linuxamd64.tgz
-- Windows: http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Windows16SP02/ASE_Suite.winx64.zip
+- Trial / download page: https://www.sap.com/products/data-cloud/sybase-ase/trial.html
+- Linux: https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
+- Windows: https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.winx64.zip

@@ -34,10 +34,16 @@ SYSAM_EXISTING_LICENSE_SERVER_PORTNUMBER=
 
 #Choose SYSAM Product Edtion and License Type
 #--------------------------------------------
+# Accepted values in the current SAP installer:
+#   Enterprise Edition, Small Business Edition, Unknown
+# "Developer Edition" was accepted by older builds but is rejected
+# by ASE16/Current/. With proceed_without_license + LICENSE_TYPE=None,
+# "Unknown" leaves the runtime edition to be resolved at first start
+# (Developer / Express mode when no served licence is found).
 # SYSAM_PRODUCT_EDITION=Enterprise Edition
 # SYSAM_LICENSE_TYPE=AR :  OEM Application Deployment Server License
 
-SYSAM_PRODUCT_EDITION=Developer Edition
+SYSAM_PRODUCT_EDITION=Unknown
 SYSAM_LICENSE_TYPE=None
 
 #Software Asset Management Notification Setting

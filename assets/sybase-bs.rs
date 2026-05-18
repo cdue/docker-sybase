@@ -3,6 +3,8 @@
 sybinit.release_directory: /opt/sybase
 sybinit.product: bsrv
 bsrv.server_name: MYSYBASE_BS
+bsrv.new_config: yes
+bsrv.do_upgrade: no
 bsrv.do_add_backup_server: yes
 bsrv.network_protocol_list: tcp
 bsrv.network_hostname_list: localhost

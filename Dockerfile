@@ -9,23 +9,16 @@ MAINTAINER Tuan Vo <vohungtuan@gmail.com>
 
 # Adding resources
 
-## SAP ASE Developer Edition 
-## https://go.sap.com/cmp/syb/crm-xu15-int-asewindm/typ.html
-# http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Linux16SP02/ASE_Suite.linuxamd64.tgz
-# http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Windows16SP02/ASE_Suite.winx64.zip
+# SAP ASE 16 Developer Edition tarball. SAP rotates these CloudFront paths
+# from time to time; if the download starts returning an error page, get a
+# fresh link from the trial page and pass it via --build-arg ASE_SUITE_URL=
+#   Trial:   https://www.sap.com/products/data-cloud/sybase-ase/trial.html
+#   Linux:   https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
+#   Windows: https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.winx64.zip
+ARG ASE_SUITE_URL=https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
 
-## SAP ASE Express Edition
-# http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/ExpressEdition/ase160_linuxx86-64.zip
-# http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/DeveloperEdition/ase160_winx64.zip
-
-# Docker docs
-# If <src> is a local tar archive in a recognized compression format (identity, gzip, bzip2 or xz) then it is unpacked as a directory.
-# Resources from remote URLs are not decompressed.
-# Because image size matters, using ADD to fetch packages from remote URLs is strongly discouraged; you should use curl or wget instead.
-
-# ADD http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Linux16SP02/ASE_Suite.linuxamd64.tgz /opt/tmp/
 RUN set -x \
- && curl -OLS http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Linux16SP02/ASE_Suite.linuxamd64.tgz \
+ && curl -fLS -o ASE_Suite.linuxamd64.tgz "${ASE_SUITE_URL}" \
  && mkdir -p /opt/tmp/ \
  && tar xfz ASE_Suite.linuxamd64.tgz -C /opt/tmp/ \
  && rm -rf ASE_Suite.linuxamd64.tgz
@@ -46,36 +39,60 @@ RUN set -x \
  && rpm -Uvh --oldpackage --nodeps /opt/tmp/glibc-2.17-105.el7.i686.rpm
 
 
-# Install Sybase
-RUN set -x \
- && /opt/tmp/ASE_Suite/setup.bin -f /opt/tmp/sybase-response.txt \
+# Install Sybase. The SAP tarball contains several setup.bin (one per
+# product: ASE itself, SySAM license manager, possibly OCS, etc.). The
+# top-level directory naming also drifts between releases, so locate
+# the ASE installer dynamically: exclude sysam_setup/, then pick the
+# first remaining match. Run it from its own directory because the
+# InstallAnywhere LAX runtime resolves its resources relative to cwd.
+RUN set -ex \
+ && ALL_SETUPS="$(find /opt/tmp -maxdepth 3 -name setup.bin -type f)" \
+ && SETUP_BIN="$(echo "$ALL_SETUPS" | grep -iv sysam | head -1)" \
+ && if [ -z "$SETUP_BIN" ]; then \
+      echo "ASE setup.bin not found under /opt/tmp; tarball layout changed?"; \
+      echo "All setup.bin found:"; echo "$ALL_SETUPS"; \
+      ls -la /opt/tmp/; \
+      exit 1; \
+    fi \
+ && echo "Using SAP installer at: $SETUP_BIN" \
+ && cd "$(dirname "$SETUP_BIN")" \
+ && ./setup.bin -f /opt/tmp/sybase-response.txt \
     -i silent \
     -DAGREE_TO_SAP_LICENSE=true \
     -DRUN_SILENT=true
 
 
-# Copy resource file
-RUN cp /opt/tmp/sybase-ase.rs /opt/sybase/ASE-16_0/sybase-ase.rs
+# All post-install steps below resolve the ASE install directory from
+# $SYBASE_ASE (set by SYBASE.sh), so they keep working when SAP bumps
+# the SP and installs under a different versioned dir than ASE-16_0.
+# The .rs templates in assets/ also have internal /opt/sybase/ASE-16_0
+# references (errorlog, tape_config_file); rewrite them before srvbuildres
+# consumes them.
+RUN source /opt/sybase/SYBASE.sh \
+ && sed -i "s|/opt/sybase/ASE-16_0|/opt/sybase/${SYBASE_ASE}|g" \
+        /opt/tmp/sybase-ase.rs /opt/tmp/sybase-bs.rs \
+ && cp /opt/tmp/sybase-ase.rs /opt/sybase/${SYBASE_ASE}/sybase-ase.rs \
+ && cp /opt/tmp/sybase-bs.rs  /opt/sybase/${SYBASE_ASE}/sybase-bs.rs
 
 # Build ASE server
 RUN source /opt/sybase/SYBASE.sh \
- && /opt/sybase/ASE-16_0/bin/srvbuildres -r /opt/sybase/ASE-16_0/sybase-ase.rs
+ && /opt/sybase/${SYBASE_ASE}/bin/srvbuildres -r /opt/sybase/${SYBASE_ASE}/sybase-ase.rs
 
 # Disable async I/O (kAIO often unavailable / misbehaving in Docker)
-RUN sed -i 's/allow sql server async i\/o = DEFAULT/allow sql server async i\/o = 0/g' /opt/sybase/ASE-16_0/MYSYBASE.cfg
+RUN source /opt/sybase/SYBASE.sh \
+ && sed -i 's|allow sql server async i/o = DEFAULT|allow sql server async i/o = 0|g' \
+        /opt/sybase/${SYBASE_ASE}/MYSYBASE.cfg
 
 # Add trace flag -T11889 to RUN_MYSYBASE (workaround for tempdb default
 # segment check that prevents ASE Dev Edition from starting in some envs)
-RUN sed -i '$ d' /opt/sybase/ASE-16_0/install/RUN_MYSYBASE
-RUN echo "-T11889" >> /opt/sybase/ASE-16_0/install/RUN_MYSYBASE
-RUN sed -i 's/-T11889/-T11889 \\/g' /opt/sybase/ASE-16_0/install/RUN_MYSYBASE
-
-# Copy Backup Server resource file
-RUN cp /opt/tmp/sybase-bs.rs /opt/sybase/ASE-16_0/sybase-bs.rs
+RUN source /opt/sybase/SYBASE.sh \
+ && sed -i '$ d' /opt/sybase/${SYBASE_ASE}/install/RUN_MYSYBASE \
+ && echo "-T11889" >> /opt/sybase/${SYBASE_ASE}/install/RUN_MYSYBASE \
+ && sed -i 's|-T11889|-T11889 \\|g' /opt/sybase/${SYBASE_ASE}/install/RUN_MYSYBASE
 
 # Build Backup Server
 RUN source /opt/sybase/SYBASE.sh \
- && /opt/sybase/ASE-16_0/bin/srvbuildres -r /opt/sybase/ASE-16_0/sybase-bs.rs
+ && /opt/sybase/${SYBASE_ASE}/bin/srvbuildres -r /opt/sybase/${SYBASE_ASE}/sybase-bs.rs
 
 # Change the Sybase interface
 # Set the Sybase startup script in entrypoint.sh

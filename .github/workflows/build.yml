@@ -16,7 +16,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build image
-        run: docker build -t sybase .
+        env:
+          ASE_SUITE_URL: ${{ vars.ASE_SUITE_URL }}
+        run: |
+          if [ -n "$ASE_SUITE_URL" ]; then
+            docker build --build-arg "ASE_SUITE_URL=$ASE_SUITE_URL" -t sybase .
+          else
+            docker build -t sybase .
+          fi
 
       - name: List images
         run: docker images
