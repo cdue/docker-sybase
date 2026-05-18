@@ -64,6 +64,12 @@ echo =============== CREATING LOGIN/PWD ==========================
 cat <<-EOSQL > init1.sql
 use master
 go
+-- Relax password policy server-wide so any SYBASE_PASSWORD override
+-- works regardless of length. The default of 8 made short passwords
+-- (e.g. SYBASE_PASSWORD=short) silently break the create login
+-- below. Server-wide, persisted in master.dat, idempotent.
+sp_configure 'minimum password length', 0
+go
 disk resize name='master', size='60m'
 go
 create database $SYBASE_DB on master = '48m'
