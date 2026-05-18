@@ -61,6 +61,15 @@ RUN cp /opt/tmp/sybase-ase.rs /opt/sybase/ASE-16_0/sybase-ase.rs
 RUN source /opt/sybase/SYBASE.sh \
  && /opt/sybase/ASE-16_0/bin/srvbuildres -r /opt/sybase/ASE-16_0/sybase-ase.rs
 
+# Disable async I/O (kAIO often unavailable / misbehaving in Docker)
+RUN sed -i 's/allow sql server async i\/o = DEFAULT/allow sql server async i\/o = 0/g' /opt/sybase/ASE-16_0/MYSYBASE.cfg
+
+# Add trace flag -T11889 to RUN_MYSYBASE (workaround for tempdb default
+# segment check that prevents ASE Dev Edition from starting in some envs)
+RUN sed -i '$ d' /opt/sybase/ASE-16_0/install/RUN_MYSYBASE
+RUN echo "-T11889" >> /opt/sybase/ASE-16_0/install/RUN_MYSYBASE
+RUN sed -i 's/-T11889/-T11889 \\/g' /opt/sybase/ASE-16_0/install/RUN_MYSYBASE
+
 # Copy Backup Server resource file
 RUN cp /opt/tmp/sybase-bs.rs /opt/sybase/ASE-16_0/sybase-bs.rs
 
