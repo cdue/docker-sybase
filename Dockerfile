@@ -105,9 +105,9 @@ FROM rockylinux:9
 
 LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
 
-# Runtime deps. procps-ng is for `ps`, used by the CI smoke test and
-# handy for users inspecting processes inside the container.
-RUN dnf install -y libaio gtk2 glibc.i686 procps-ng \
+# Runtime deps. procps-ng for `ps`, which for diagnostics inside the
+# container (both used by the CI smoke test and by users).
+RUN dnf install -y libaio gtk2 glibc.i686 procps-ng which \
  && dnf clean all
 
 COPY --from=builder /opt/sybase /opt/sybase
@@ -121,8 +121,13 @@ RUN ln -s /usr/local/bin/sybase-entrypoint.sh /sybase-entrypoint.sh
 RUN echo '. /opt/sybase/SYBASE.sh' > /etc/profile.d/sybase.sh
 
 # SAP's locales.dat does not know "C.UTF-8" (Rocky 9 default), and isql
-# refuses to start without a matching entry. en_US.UTF-8 is in locales.dat
+# refuses to start without a matching entry. Set en_US.UTF-8 in both
+# /etc/locale.conf (which /etc/profile.d/lang.sh sources for every
+# interactive login/non-login shell, overwriting any prior LANG value)
+# and ENV (for non-interactive contexts like the entrypoint and
+# `docker exec my-sybase bash -c '...'`). en_US.UTF-8 is in locales.dat
 # and matches the glibc-langpack-en pulled in as a dep above.
+RUN echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 ENV LANG=en_US.UTF-8
 
 ENTRYPOINT ["/sybase-entrypoint.sh"]
