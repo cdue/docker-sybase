@@ -15,7 +15,7 @@ sqlsrv.force_buildmaster: no
 sqlsrv.addl_cmdline_parameters:
 sqlsrv.master_device_physical_name: /opt/sybase/data/master.dat
 sqlsrv.master_device_size: 100
-sqlsrv.master_database_size: 100
+sqlsrv.master_database_size: 80
 sqlsrv.errorlog: /opt/sybase/ASE-16_0/install/MYSYBASE.log
 sqlsrv.sort_order:	bin_utf8
 sqlsrv.default_characterset:	utf8
@@ -29,7 +29,7 @@ sqlsrv.sybsystemdb_device_size: 24
 sqlsrv.sybsystemdb_database_size: 24
 sqlsrv.tempdb_device_physical_name: /opt/sybase/data/tempdbdev.dat
 sqlsrv.tempdb_device_size: 100
-sqlsrv.tempdb_database_size: 100
+sqlsrv.tempdb_database_size: 80
 sqlsrv.default_backup_server: MYSYBASE_BS
 sqlsrv.do_configure_pci: no
 sqlsrv.sybpcidb_device_physical_name: /opt/sybase/data/sybpcidbdev_data.dat
