@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Fork of `nguoianphu/docker-sybase` that builds a Docker image for SAP ASE 16.0 Developer Edition (centos:7 base).
+Fork of `nguoianphu/docker-sybase` that builds a Docker image for SAP ASE 16 Developer Edition (rockylinux:9 base — upstream uses centos:7 which is EOL and ships glibc 2.17, incompatible with both the JRE bundled in SAP's current installer and the ASE dataserver binary itself, which now requires glibc 2.29+).
 
 Two branches matter:
 - `main` — original upstream behaviour (16K pages, dataserver only, no auto-init).
@@ -44,7 +44,7 @@ CI (`.github/workflows/build.yml`) runs the same `docker build` + smoke test on 
 The Dockerfile is the whole project — there is no application code. What it actually does, in order:
 
 1. Pull the ASE tarball from the URL in `ARG ASE_SUITE_URL` (overridable with `--build-arg ASE_SUITE_URL=…`, or via the repo variable `vars.ASE_SUITE_URL` in CI), extract to `/opt/tmp/`, copy everything under `assets/` to `/opt/tmp/` as well. The default URL is what SAP serves at the time of the commit; it expires periodically — see README "Refreshing the SAP installer URL" for the recovery procedure.
-2. Install RPMs (libaio, gtk2, glibc i686 — `--nodeps` because centos:7 satisfies the rest).
+2. `dnf install -y libaio gtk2 glibc.i686 findutils procps-ng` (SAP setup.bin / ASE need both 64- and 32-bit libc; gtk2 is loaded by InstallAnywhere even in silent mode; findutils for the `find` used by `setup.bin` discovery and the final `/opt/tmp` cleanup; procps-ng for the `ps` used by the CI smoke test).
 3. Run the SAP `setup.bin` installer in silent mode driven by `assets/sybase-response.txt` (`SY_CONFIG_*_SERVER=false` everywhere — no server is configured by the installer).
 4. **`srvbuildres -r sybase-ase.rs`** generates the dataserver: writes `master.dat`, `MYSYBASE.cfg`, `install/RUN_MYSYBASE`, `install/MYSYBASE.log`, etc. The values in `assets/sybase-ase.rs` (page size, device paths/sizes, sa password, default backup server name) define the server.
 5. **(sybase-2k)** Three `sed`/`echo` patches mutate the files srvbuildres just generated:
@@ -69,7 +69,7 @@ The sa password used by the entrypoint's `isql` (`myPassword`) is the same strin
 
 - `assets/sybase-response.txt` — installer config; nothing relevant to page size / BS is set here, do not bother adding `SY_CFG_ASE_PAGESIZE` etc.
 - `assets/sybase-response-example.txt` — reference only, not used by the build.
-- `assets/*.rpm`, `assets/sysctl.conf` — system bootstrap, leave alone.
+- `assets/sysctl.conf` — system bootstrap, leave alone.
 - `assets/interfaces` — already declares both `MYSYBASE` and `MYSYBASE_BS`; only edit if you rename a server or change a port.
 
 ## Commit messages

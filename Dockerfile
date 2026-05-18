@@ -3,9 +3,9 @@
 # docker build -t sybase .
 
 
-FROM centos:7
+FROM rockylinux:9
 
-MAINTAINER Tuan Vo <vohungtuan@gmail.com>
+LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
 
 # Adding resources
 
@@ -32,11 +32,15 @@ RUN set -x \
  && cp /opt/tmp/sysctl.conf /etc/ \
  && true || /sbin/sysctl -p
 
-# Installing Sybase RPMs
-RUN set -x \
- && rpm -ivh --nodeps /opt/tmp/libaio-0.3.109-13.el7.x86_64.rpm \
- && rpm -ivh --nodeps /opt/tmp/gtk2-2.24.28-8.el7.x86_64.rpm \
- && rpm -Uvh --oldpackage --nodeps /opt/tmp/glibc-2.17-105.el7.i686.rpm
+# Sybase / SAP installer runtime deps
+# - libaio: ASE links against it even with async I/O disabled at runtime
+# - gtk2: InstallAnywhere loads gtk libs at startup even in silent mode
+# - glibc.i686: setup.bin and a few legacy ASE tools are 32-bit
+# - findutils: rockylinux:8 minimal does not ship find/xargs, both used
+#   below (setup.bin discovery, final /opt/tmp cleanup)
+# - procps-ng: ps, used by the CI smoke test inside the container
+RUN dnf install -y libaio gtk2 glibc.i686 findutils procps-ng \
+ && dnf clean all
 
 
 # Install Sybase. The SAP tarball contains several setup.bin (one per
