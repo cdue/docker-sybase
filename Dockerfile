@@ -94,6 +94,17 @@ RUN mv /opt/sybase/interfaces /opt/sybase/interfaces.backup \
  && chmod +x /usr/local/bin/sybase-entrypoint.sh \
  && ln -s /usr/local/bin/sybase-entrypoint.sh /sybase-entrypoint.sh
 
+# Auto-source SYBASE.sh in every interactive shell so `docker exec -it
+# <container> bash` has isql / dataserver / SYBASE_ASE / etc. in the
+# environment without having to source it manually. /etc/profile.d/*.sh
+# is read by /etc/bashrc on Rocky, which is sourced by root's ~/.bashrc.
+RUN echo '. /opt/sybase/SYBASE.sh' > /etc/profile.d/sybase.sh
+
+# SAP's locales.dat does not know "C.UTF-8" (Rocky 9 default), and isql
+# refuses to start without a matching entry. en_US.UTF-8 is in locales.dat
+# and matches the glibc-langpack-en we installed above.
+ENV LANG=en_US.UTF-8
+
 # Drop the installer payload now that ASE is built and patched
 RUN find /opt/tmp/ -type f | xargs -L1 rm -f
 

@@ -8,7 +8,7 @@ ${SYBASE}/${SYBASE_ASE}/install/startserver \
   -f ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE_BS &
 
 # Start MYSYBASE (dataserver) in the background so we can run init SQL once it's up
-sh /opt/sybase/SYBASE.sh && sh /opt/sybase/ASE-16_0/install/RUN_MYSYBASE > /dev/null &
+sh /opt/sybase/SYBASE.sh && sh ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE > /dev/null &
 
 #waiting for sybase to start
 export STATUS=0
@@ -17,7 +17,7 @@ echo ===============  WAITING FOR master.dat SPACE ALLOCATION ==================
 while (( $i < 60 )); do
 	sleep 1
 	i=$((i+1))
-	STATUS=$(grep "Performing space allocation for device '/opt/sybase/data/master.dat'" /opt/sybase/ASE-16_0/install/MYSYBASE.log | wc -c)
+	STATUS=$(grep "Performing space allocation for device '/opt/sybase/data/master.dat'" ${SYBASE}/${SYBASE_ASE}/install/MYSYBASE.log | wc -c)
 	if (( $STATUS > 300 )); then
 	  break
 	fi
@@ -29,7 +29,7 @@ j=1
 while (( $j < 30 )); do
   sleep 1
   j=$((j+1))
-  STATUS2=$(grep "Finished initialization." /opt/sybase/ASE-16_0/install/MYSYBASE.log | wc -c)
+  STATUS2=$(grep "Finished initialization." ${SYBASE}/${SYBASE_ASE}/install/MYSYBASE.log | wc -c)
   if (( $STATUS2 > 350 )); then
     break
   fi
@@ -88,7 +88,7 @@ go
 
 EOSQL
 
-/opt/sybase/OCS-16_0/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init1.sql"
+${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init1.sql"
 
 echo =============== CREATING DB ==========================
 cat <<-EOSQL > init2.sql
@@ -115,7 +115,7 @@ go
 
 EOSQL
 
-/opt/sybase/OCS-16_0/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init2.sql"
+${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init2.sql"
 
 echo =============== SYBASE INITIALIZED ==========================
 
