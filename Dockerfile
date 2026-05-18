@@ -1,6 +1,7 @@
-FROM rockylinux:9
-
-LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
+# Two-stage build: the SAP installer payload extracts to ~2 GB under
+# /opt/tmp during the build. By doing the install in a builder stage
+# and copying only /opt/sybase to the runtime stage, we keep none of
+# that staging junk in the published image.
 
 # SAP ASE 16 Developer Edition tarball. SAP rotates these CloudFront paths
 # from time to time; if the download starts returning an error page, get a
@@ -10,25 +11,30 @@ LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
 #   Windows: https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.winx64.zip
 ARG ASE_SUITE_URL=https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
 
+
+# ============================================================
+# Stage 1 — install SAP ASE under /opt/sybase
+# ============================================================
+FROM rockylinux:9 AS builder
+
+ARG ASE_SUITE_URL
+
+# SAP installer build deps
+# - libaio: ASE links against it even with async I/O disabled at runtime
+# - gtk2: InstallAnywhere loads gtk libs at startup even in silent mode
+# - glibc.i686: setup.bin and a few legacy ASE tools are 32-bit
+# - findutils: rockylinux minimal does not ship find/xargs, used by the
+#   setup.bin discovery below
+RUN dnf install -y libaio gtk2 glibc.i686 findutils \
+ && dnf clean all
+
 RUN set -x \
  && curl -fLS -o ASE_Suite.linuxamd64.tgz "${ASE_SUITE_URL}" \
  && mkdir -p /opt/tmp/ \
  && tar xfz ASE_Suite.linuxamd64.tgz -C /opt/tmp/ \
  && rm -rf ASE_Suite.linuxamd64.tgz
 
-
 COPY assets/* /opt/tmp/
-
-# Sybase / SAP installer runtime deps
-# - libaio: ASE links against it even with async I/O disabled at runtime
-# - gtk2: InstallAnywhere loads gtk libs at startup even in silent mode
-# - glibc.i686: setup.bin and a few legacy ASE tools are 32-bit
-# - findutils: rockylinux minimal does not ship find/xargs, both used
-#   below (setup.bin discovery, final /opt/tmp cleanup)
-# - procps-ng: ps, used by the CI smoke test inside the container
-RUN dnf install -y libaio gtk2 glibc.i686 findutils procps-ng \
- && dnf clean all
-
 
 # Install Sybase. The SAP tarball contains several setup.bin (one per
 # product: ASE itself, SySAM license manager, possibly OCS, etc.). The
@@ -51,7 +57,6 @@ RUN set -ex \
     -i silent \
     -DAGREE_TO_SAP_LICENSE=true \
     -DRUN_SILENT=true
-
 
 # All post-install steps below resolve the ASE install directory from
 # $SYBASE_ASE (set by SYBASE.sh), so they keep working when SAP bumps
@@ -85,14 +90,29 @@ RUN source /opt/sybase/SYBASE.sh \
 RUN source /opt/sybase/SYBASE.sh \
  && /opt/sybase/${SYBASE_ASE}/bin/srvbuildres -r /opt/sybase/${SYBASE_ASE}/sybase-bs.rs
 
-# Change the Sybase interface
-# Set the Sybase startup script in entrypoint.sh
-
+# Install the custom interfaces file and entrypoint script into the
+# layout the runtime stage will COPY from.
 RUN mv /opt/sybase/interfaces /opt/sybase/interfaces.backup \
  && cp /opt/tmp/interfaces /opt/sybase/ \
  && cp /opt/tmp/sybase-entrypoint.sh /usr/local/bin/ \
- && chmod +x /usr/local/bin/sybase-entrypoint.sh \
- && ln -s /usr/local/bin/sybase-entrypoint.sh /sybase-entrypoint.sh
+ && chmod +x /usr/local/bin/sybase-entrypoint.sh
+
+
+# ============================================================
+# Stage 2 — lean runtime image (no /opt/tmp, no findutils)
+# ============================================================
+FROM rockylinux:9
+
+LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
+
+# Runtime deps. procps-ng is for `ps`, used by the CI smoke test and
+# handy for users inspecting processes inside the container.
+RUN dnf install -y libaio gtk2 glibc.i686 procps-ng \
+ && dnf clean all
+
+COPY --from=builder /opt/sybase /opt/sybase
+COPY --from=builder /usr/local/bin/sybase-entrypoint.sh /usr/local/bin/
+RUN ln -s /usr/local/bin/sybase-entrypoint.sh /sybase-entrypoint.sh
 
 # Auto-source SYBASE.sh in every interactive shell so `docker exec -it
 # <container> bash` has isql / dataserver / SYBASE_ASE / etc. in the
@@ -102,11 +122,8 @@ RUN echo '. /opt/sybase/SYBASE.sh' > /etc/profile.d/sybase.sh
 
 # SAP's locales.dat does not know "C.UTF-8" (Rocky 9 default), and isql
 # refuses to start without a matching entry. en_US.UTF-8 is in locales.dat
-# and matches the glibc-langpack-en we installed above.
+# and matches the glibc-langpack-en pulled in as a dep above.
 ENV LANG=en_US.UTF-8
-
-# Drop the installer payload now that ASE is built and patched
-RUN find /opt/tmp/ -type f | xargs -L1 rm -f
 
 ENTRYPOINT ["/sybase-entrypoint.sh"]
 
