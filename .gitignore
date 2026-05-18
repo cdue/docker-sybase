@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*.sublime-workspace
+
+# SAP ASE installer tarball (downloaded by the Dockerfile at build time,
+# may end up locally if someone curls it manually for inspection)
+ASE_Suite.linuxamd64.tgz
+ASE_Suite.winx64.zip
+
+# Local patch / scratch artifacts
+*.patch
+*.zip

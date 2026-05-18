@@ -1,44 +1,84 @@
-# Docker Sybase ASE image
+# Docker Sybase ASE image (2K page size)
 
-[![Build Status](https://travis-ci.org/nguoianphu/docker-sybase.svg?branch=master)](https://travis-ci.org/nguoianphu/docker-sybase)
-[![](https://images.microbadger.com/badges/image/nguoianphu/docker-sybase.svg)](http://microbadger.com/images/nguoianphu/docker-sybase "Get your own image badge on microbadger.com")
+[![build](https://github.com/cdue/docker-sybase/actions/workflows/build.yml/badge.svg)](https://github.com/cdue/docker-sybase/actions/workflows/build.yml)
 
-## SAP ASE Developer Edition
-        https://go.sap.com/cmp/syb/crm-xu15-int-asewindm/typ.html
+Docker image for **SAP ASE 16.0 Developer Edition** with a **2 KB logical page size** (instead of the upstream 16 KB) so it can `LOAD DATABASE` dumps from legacy 2K Sybase instances. A **Backup Server** (`MYSYBASE_BS`, port 5001) is built and started alongside the dataserver to make `DUMP` / `LOAD DATABASE` work out of the box.
 
-        http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Linux16SP02/ASE_Suite.linuxamd64.tgz
-        http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Windows16SP02/ASE_Suite.winx64.zip
+This repo is a fork of [`nguoianphu/docker-sybase`](https://github.com/nguoianphu/docker-sybase) which also incorporates the dev-ergonomics layer from [`DataGrip/docker-env/sybase/16.0`](https://github.com/DataGrip/docker-env/tree/master/sybase/16.0) (async I/O off, `-T11889` trace flag, entrypoint auto-creates a configurable user database on first boot).
 
-## SAP ASE Express Edition
-        http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/ExpressEdition/ase160_linuxx86-64.zip
-        http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/DeveloperEdition/ase160_winx64.zip
-
-
-## This image use the SAP Sybase ASE Developer Edition 16.0
-
-### Build
+## Build
 
         docker build -t sybase .
-        
-### Run
-        docker run -d -p 8000:5000 -p 8001:5001 --name my-sybase sybase
-        
-        # or
-        docker run -d -p 8000:5000 -p 8001:5001 --name nguoianphu-sybase nguoianphu/docker-sybase
-        
-#### Check isql
+
+The build downloads a ~500 MB tarball from a SAP Cloudfront URL and runs the ASE installer + two `srvbuildres` passes. Expect 10–20 minutes.
+
+## Run
+
+        docker run -d -p 5000:5000 -p 5001:5001 --name my-sybase sybase
+
+Port 5000 is the dataserver (`MYSYBASE`), port 5001 is the Backup Server (`MYSYBASE_BS`). Follow the boot with `docker logs -f my-sybase` and wait for the line `SYBASE INITIALIZED` (~60–120 s on a warm host).
+
+### Default credentials
+
+#### Admin user (created by `srvbuildres` at image build time, password hardcoded in `assets/sybase-ase.rs`)
+
+| Field | Default value |
+| --- | --- |
+| `SYBASE_USER` | `sa` |
+| `SYBASE_PASSWORD` | `myPassword` |
+
+#### Developer user (created by the entrypoint on first boot, configurable via env vars)
+
+| Environment variable | Default value |
+| --- | --- |
+| `SYBASE_USER` | `tester` |
+| `SYBASE_PASSWORD` | `guest1234` |
+| `SYBASE_DB` | `testdb` |
+
+Override the developer user / database at `docker run`:
+
+        docker run -d -p 5000:5000 -p 5001:5001 \
+          -e SYBASE_USER=foo -e SYBASE_PASSWORD=bar -e SYBASE_DB=baz \
+          --name my-sybase sybase
+
+### Check with isql
 
         docker exec -it my-sybase /bin/bash
-        
         source /opt/sybase/SYBASE.sh
         isql -U sa -P myPassword -S MYSYBASE
-        
-        select @@version
-        go
-        
-### Mount licenses
 
-        docker run -d -p 8000:5000 -p 8001:5001 -v /path/to/sybase_licenses:/opt/sybase/SYSAM-2_0/licenses --name my-sybase sybase
-        
-        # or
-        docker run -d -p 8000:5000 -p 8001:5001 -v /path/to/sybase_licenses:/opt/sybase/SYSAM-2_0/licenses --name nguoianphu-sybase nguoianphu/docker-sybase
+        select @@maxpagesize
+        go
+        -- should return 2048
+
+### Mount licenses (optional)
+
+        docker run -d -p 5000:5000 -p 5001:5001 \
+          -v /path/to/sybase_licenses:/opt/sybase/SYSAM-2_0/licenses \
+          --name my-sybase sybase
+
+## Publishing to Docker Hub
+
+The GitHub Actions workflow (`.github/workflows/build.yml`) pushes the image to Docker Hub after a successful build, on every push to a branch (not on pull requests). The tag is the branch name, except `main` and `master` which both publish as `latest`. Slashes in branch names are sanitized to dashes (`feature/foo` → `feature-foo`).
+
+The push is **off by default** in any fork — it only runs if the Docker Hub variable below is set, so forking the repo never breaks CI.
+
+To enable it, go to **Settings → Secrets and variables → Actions** in your fork and add the following at the **Repository** scope:
+
+| Type | Name | Example | Purpose |
+| --- | --- | --- | --- |
+| Secret | `DOCKERHUB_USERNAME` | `your-dockerhub-username` | Docker Hub login |
+| Secret | `DOCKERHUB_TOKEN` | (Docker Hub access token) | Generated under Docker Hub → Account Settings → Security → Access Tokens with `Read & Write` scope. Do **not** use your account password. |
+| Variable | `DOCKERHUB_IMAGE` | `your-dockerhub-username/docker-sybase` | Full Docker Hub repo path to push to |
+
+Then pull the published image:
+
+        docker run -d -p 5000:5000 -p 5001:5001 --name my-sybase $DOCKERHUB_IMAGE:latest
+
+(replace `$DOCKERHUB_IMAGE` with the value you configured, e.g. `your-dockerhub-username/docker-sybase`).
+
+## SAP ASE Developer Edition reference
+
+- https://go.sap.com/cmp/syb/crm-xu15-int-asewindm/typ.html
+- Linux: http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Linux16SP02/ASE_Suite.linuxamd64.tgz
+- Windows: http://d1cuw2q49dpd0p.cloudfront.net/ASE16.0/Windows16SP02/ASE_Suite.winx64.zip
