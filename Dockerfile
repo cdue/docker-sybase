@@ -97,6 +97,28 @@ RUN mv /opt/sybase/interfaces /opt/sybase/interfaces.backup \
  && cp /opt/tmp/sybase-entrypoint.sh /usr/local/bin/ \
  && chmod +x /usr/local/bin/sybase-entrypoint.sh
 
+# Trim ~1.25 GB from /opt/sybase that the runtime stage does not need.
+# Mostly diag* debug builds of dataserver/backupserver/xpserver (400 MB
+# of diagserver alone), several copies of bundled JREs that only the
+# Java-based SAP admin tools use, the JDBC driver, dev libs (we ship
+# only the runtime shared libs), and installer leftovers.
+RUN set -ex \
+ && rm -rf /opt/sybase/sybuninstall \
+           /opt/sybase/jre64 \
+           /opt/sybase/shared/SAPMACHINE-21_00_10_64BIT \
+           /opt/sybase/shared/SAPJRE-8_1_108_64BIT \
+           /opt/sybase/shared/ase/SAPJRE-8_1_108_64BIT \
+           /opt/sybase/jConnect-16_1 \
+           /opt/sybase/jutils-3_0 \
+           /opt/sybase/WLA \
+           /opt/sybase/WS-16_1 \
+           /opt/sybase/SYBDIAG \
+           /opt/sybase/log \
+           /opt/sybase/OCS-16_1/devlib \
+           /opt/sybase/OCS-16_1/devlib3p64 \
+ && find /opt/sybase/ASE-16_1/bin -maxdepth 1 \
+        \( -name 'diag*' -o -name '*.sym' \) -delete
+
 
 # ============================================================
 # Stage 2 — lean runtime image (no /opt/tmp, no findutils)
