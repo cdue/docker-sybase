@@ -3,9 +3,10 @@
 export SYBASE=/opt/sybase
 source /opt/sybase/SYBASE.sh
 
-# Start the Backup Server in the background
-${SYBASE}/${SYBASE_ASE}/install/startserver \
-  -f ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE_BS &
+# Start the Backup Server in the background by invoking its RUN file
+# directly (the SAP `startserver` wrapper was dropped in newer SPs;
+# this mirrors how the dataserver is started just below).
+sh ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE_BS > /dev/null &
 
 # Start MYSYBASE (dataserver) in the background so we can run init SQL once it's up
 sh /opt/sybase/SYBASE.sh && sh ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE > /dev/null &
