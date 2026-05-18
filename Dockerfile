@@ -1,13 +1,6 @@
-# Dockerfile for sybase server
-
-# docker build -t sybase .
-
-
 FROM rockylinux:9
 
 LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
-
-# Adding resources
 
 # SAP ASE 16 Developer Edition tarball. SAP rotates these CloudFront paths
 # from time to time; if the download starts returning an error page, get a
@@ -26,17 +19,11 @@ RUN set -x \
 
 COPY assets/* /opt/tmp/
 
-
-# Setting kernel.shmmax and 
-RUN set -x \
- && cp /opt/tmp/sysctl.conf /etc/ \
- && true || /sbin/sysctl -p
-
 # Sybase / SAP installer runtime deps
 # - libaio: ASE links against it even with async I/O disabled at runtime
 # - gtk2: InstallAnywhere loads gtk libs at startup even in silent mode
 # - glibc.i686: setup.bin and a few legacy ASE tools are 32-bit
-# - findutils: rockylinux:8 minimal does not ship find/xargs, both used
+# - findutils: rockylinux minimal does not ship find/xargs, both used
 #   below (setup.bin discovery, final /opt/tmp cleanup)
 # - procps-ng: ps, used by the CI smoke test inside the container
 RUN dnf install -y libaio gtk2 glibc.i686 findutils procps-ng \
@@ -106,23 +93,10 @@ RUN mv /opt/sybase/interfaces /opt/sybase/interfaces.backup \
  && cp /opt/tmp/sybase-entrypoint.sh /usr/local/bin/ \
  && chmod +x /usr/local/bin/sybase-entrypoint.sh \
  && ln -s /usr/local/bin/sybase-entrypoint.sh /sybase-entrypoint.sh
- 
 
-# Setup the ENV
-# https://docs.docker.com/engine/reference/builder/#run
-# RUN ["/bin/bash", "-c", "source /opt/sybase/SYBASE.sh"]
+# Drop the installer payload now that ASE is built and patched
+RUN find /opt/tmp/ -type f | xargs -L1 rm -f
 
 ENTRYPOINT ["/sybase-entrypoint.sh"]
 
-# CMD []
-
 EXPOSE 5000 5001
-
-# Remove tmp
-RUN find /opt/tmp/ -type f | xargs -L1 rm -f
-
-# Share the Sybase data directory
-#VOLUME ["/opt/sybase/data"]
-
-# When run it
-# docker run -d -p 8000:5000 -p 8001:5001 --name my-sybase sybase
