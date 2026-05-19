@@ -92,6 +92,26 @@ if (( SYBASE_TEMPDB_SIZE > 80 )); then
 	)
 fi
 
+# "Finished initialization." in MYSYBASE.log is necessary but not sufficient
+# — there is a window between that log line and the TCP listener actually
+# accepting connections, during which `isql` fails with ct_connect(). Probe
+# the listener with a real round-trip and only proceed once the server
+# answers, otherwise init1.sql / init2.sql silently fail (ct_connect) and
+# we'd still log "SYBASE INITIALIZED" at the end.
+echo ===============  WAITING FOR LISTENER ==========================
+k=0
+while (( k < 60 )); do
+	if printf 'select 1\ngo\n' | ${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -l5 >/dev/null 2>&1; then
+		break
+	fi
+	sleep 1
+	k=$((k+1))
+done
+if (( k >= 60 )); then
+	echo "ERROR: ASE did not accept connections within 60s, aborting init"
+	exit 1
+fi
+
 echo =============== CREATING LOGIN/PWD ==========================
 cat <<-EOSQL > init1.sql
 use master
@@ -130,7 +150,10 @@ go
 
 EOSQL
 
-${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init1.sql"
+${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init1.sql" || {
+	echo "ERROR: init1.sql failed (isql exit non-zero), aborting"
+	exit 1
+}
 
 echo =============== CREATING DB ==========================
 cat <<-EOSQL > init2.sql
@@ -157,7 +180,10 @@ go
 
 EOSQL
 
-${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init2.sql"
+${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init2.sql" || {
+	echo "ERROR: init2.sql failed (isql exit non-zero), aborting"
+	exit 1
+}
 
 echo =============== SYBASE INITIALIZED ==========================
 
