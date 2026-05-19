@@ -34,11 +34,21 @@ Port 5000 is the dataserver (`MYSYBASE`), port 5001 is the Backup Server (`MYSYB
 | `SYBASE_USER` | `tester` |
 | `SYBASE_PASSWORD` | `guest1234` |
 | `SYBASE_DB` | `testdb` |
+| `SYBASE_DB_SIZE` | `48` (MB) |
+| `SYBASE_TEMPDB_SIZE` | `80` (MB) |
+
+`SYBASE_DB_SIZE` controls the size of `$SYBASE_DB` (the user database the entrypoint creates on first boot, carved from the `master` device — `master` itself stays at 80 MB and is not exposed). `SYBASE_TEMPDB_SIZE` controls the size of `tempdb`, which matters for `LOAD DATABASE` of larger dumps and for sort- or temp-table-heavy queries. Both grow their backing devices at runtime, in the container's writable layer, so the **published image stays the same size** regardless of the values you pick — only the running container uses more disk.
 
 Override the developer user / database at `docker run`:
 
         docker run -d -p 5000:5000 -p 5001:5001 \
           -e SYBASE_USER=foo -e SYBASE_PASSWORD=bar -e SYBASE_DB=baz \
+          --name my-sybase sybase
+
+Override the database / tempdb sizes (useful when restoring larger dumps):
+
+        docker run -d -p 5000:5000 -p 5001:5001 \
+          -e SYBASE_DB_SIZE=200 -e SYBASE_TEMPDB_SIZE=500 \
           --name my-sybase sybase
 
 ### Check with isql

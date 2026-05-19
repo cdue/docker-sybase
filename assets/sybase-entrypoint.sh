@@ -60,6 +60,38 @@ else
 	echo "SYBASE_DB: $SYBASE_DB"
 fi
 
+if [ ! -z $SYBASE_DB_SIZE ]; then
+	echo "SYBASE_DB_SIZE: $SYBASE_DB_SIZE"
+else
+	SYBASE_DB_SIZE=48
+	echo "SYBASE_DB_SIZE: $SYBASE_DB_SIZE"
+fi
+
+if [ ! -z $SYBASE_TEMPDB_SIZE ]; then
+	echo "SYBASE_TEMPDB_SIZE: $SYBASE_TEMPDB_SIZE"
+else
+	SYBASE_TEMPDB_SIZE=80
+	echo "SYBASE_TEMPDB_SIZE: $SYBASE_TEMPDB_SIZE"
+fi
+
+# tempdb ships at 80 MB on a 100 MB device (see assets/sybase-ase.rs);
+# grow both at runtime — in the container's writable layer — so the
+# published image is not gated on a fat tempdb. No-op at the default
+# size of 80; above that, resize the device by the delta and extend
+# the database onto the new space. `disk resize` takes an *additional*
+# size, not an absolute one.
+TEMPDB_SQL=""
+if (( SYBASE_TEMPDB_SIZE > 80 )); then
+	TEMPDB_DELTA=$((SYBASE_TEMPDB_SIZE - 80))
+	TEMPDB_SQL=$(cat <<-EOSQL
+	disk resize name='tempdbdev', size='${TEMPDB_DELTA}m'
+	go
+	alter database tempdb on tempdbdev = '${TEMPDB_DELTA}m'
+	go
+	EOSQL
+	)
+fi
+
 echo =============== CREATING LOGIN/PWD ==========================
 cat <<-EOSQL > init1.sql
 use master
@@ -70,9 +102,12 @@ go
 -- below. Server-wide, persisted in master.dat, idempotent.
 sp_configure 'minimum password length', 0
 go
-disk resize name='master', size='60m'
+${TEMPDB_SQL}
+-- Grow the master device by SYBASE_DB_SIZE so the user DB carved
+-- from it fits (master DB itself stays at 80 MB, untouched).
+disk resize name='master', size='${SYBASE_DB_SIZE}m'
 go
-create database $SYBASE_DB on master = '48m'
+create database $SYBASE_DB on master = '${SYBASE_DB_SIZE}m'
 go
 exec sp_extendsegment logsegment, $SYBASE_DB, master
 go
