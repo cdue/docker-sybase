@@ -44,7 +44,7 @@ COPY assets/* /opt/tmp/
 # InstallAnywhere LAX runtime resolves its resources relative to cwd.
 RUN set -ex \
  && ALL_SETUPS="$(find /opt/tmp -maxdepth 3 -name setup.bin -type f)" \
- && SETUP_BIN="$(echo "$ALL_SETUPS" | grep -iv sysam | head -1)" \
+ && SETUP_BIN="$(echo "$ALL_SETUPS" | grep -ivE 'sysam|faultmanager' | head -1)" \
  && if [ -z "$SETUP_BIN" ]; then \
       echo "ASE setup.bin not found under /opt/tmp; tarball layout changed?"; \
       echo "All setup.bin found:"; echo "$ALL_SETUPS"; \
