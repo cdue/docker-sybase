@@ -15,7 +15,10 @@ ARG ASE_SUITE_URL=https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.
 # ============================================================
 # Stage 1 — install SAP ASE under /opt/sybase
 # ============================================================
-FROM rockylinux:9 AS builder
+# SAP ASE only ships x86_64 binaries (and the installer needs 32-bit
+# x86 glibc), so pin the platform — on Apple Silicon the build runs
+# under Rosetta emulation instead of failing on glibc.i686.
+FROM --platform=linux/amd64 rockylinux:9 AS builder
 
 ARG ASE_SUITE_URL
 
@@ -123,7 +126,7 @@ RUN set -ex \
 # ============================================================
 # Stage 2 — lean runtime image (no /opt/tmp, no findutils)
 # ============================================================
-FROM rockylinux:9
+FROM --platform=linux/amd64 rockylinux:9
 
 LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
 
