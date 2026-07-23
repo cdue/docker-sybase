@@ -5,14 +5,18 @@
 # "Refreshing the SAP installer URL" if the build starts failing.
 ARG ASE_SUITE_URL=https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
 
+# SAP ASE only ships x86_64 binaries (and the installer needs 32-bit
+# x86 glibc), so default both stages to amd64 — on Apple Silicon the
+# build then runs under Rosetta emulation instead of failing on
+# glibc.i686. An ARG (not a constant) keeps the BuildKit linter happy
+# and the value overridable, even though no other platform can work.
+ARG ASE_PLATFORM=linux/amd64
+
 
 # ============================================================
 # Stage 1 — install SAP ASE under /opt/sybase
 # ============================================================
-# SAP ASE only ships x86_64 binaries (and the installer needs 32-bit
-# x86 glibc), so pin the platform — on Apple Silicon the build runs
-# under Rosetta emulation instead of failing on glibc.i686.
-FROM --platform=linux/amd64 rockylinux:9 AS builder
+FROM --platform=$ASE_PLATFORM rockylinux:9 AS builder
 
 ARG ASE_SUITE_URL
 
@@ -113,7 +117,7 @@ RUN set -ex \
 # ============================================================
 # Stage 2 — lean runtime image (no /opt/tmp, no findutils)
 # ============================================================
-FROM --platform=linux/amd64 rockylinux:9
+FROM --platform=$ASE_PLATFORM rockylinux:9
 
 # procps-ng provides `ps`, and `which` is used for diagnostics inside
 # the container (both by the CI smoke test and by users at the prompt).
