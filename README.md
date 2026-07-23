@@ -4,7 +4,7 @@
 
 Docker image for **SAP ASE 16.0 Developer Edition** with a **2 KB logical page size** (instead of the upstream 16 KB) so it can `LOAD DATABASE` dumps from legacy 2K Sybase instances. A **Backup Server** (`MYSYBASE_BS`, port 5001) is built and started alongside the dataserver to make `DUMP` / `LOAD DATABASE` work out of the box.
 
-This repo is a fork of [`nguoianphu/docker-sybase`](https://github.com/nguoianphu/docker-sybase) which also incorporates the dev-ergonomics layer from [`DataGrip/docker-env/sybase/16.0`](https://github.com/DataGrip/docker-env/tree/master/sybase/16.0) (async I/O off, `-T11889` trace flag, entrypoint auto-creates a configurable user database on first boot).
+This repo is inspired by [`nguoianphu/docker-sybase`](https://github.com/nguoianphu/docker-sybase) and also incorporates the dev-ergonomics layer from [`DataGrip/docker-env/sybase/16.0`](https://github.com/DataGrip/docker-env/tree/master/sybase/16.0) (async I/O off, `-T11889` trace flag, entrypoint auto-creates a configurable user database on first boot).
 
 ## Build
 

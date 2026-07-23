@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-Fork of `nguoianphu/docker-sybase` that builds a Docker image for SAP ASE 16 Developer Edition (rockylinux:9 base — upstream uses centos:7 which is EOL and ships glibc 2.17, incompatible with both the JRE bundled in SAP's current installer and the ASE dataserver binary itself, which now requires glibc 2.29+).
+Inspired by `nguoianphu/docker-sybase` that builds a Docker image for SAP ASE 16 Developer Edition (rockylinux:9 base — upstream uses centos:7 which is EOL and ships glibc 2.17, incompatible with both the JRE bundled in SAP's current installer and the ASE dataserver binary itself, which now requires glibc 2.29+).
 
 Two branches matter:
 - `main` — original upstream behaviour (16K pages, dataserver only, no auto-init).
