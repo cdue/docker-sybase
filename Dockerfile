@@ -1,14 +1,8 @@
-# Two-stage build: the SAP installer payload extracts to ~2 GB under
-# /opt/tmp during the build. By doing the install in a builder stage
-# and copying only /opt/sybase to the runtime stage, we keep none of
-# that staging junk in the published image.
+# Two-stage build: keep the ~2 GB SAP installer payload in the builder
+# stage and copy only /opt/sybase into the runtime image.
 
-# SAP ASE 16 Developer Edition tarball. SAP rotates these CloudFront paths
-# from time to time; if the download starts returning an error page, get a
-# fresh link from the trial page and pass it via --build-arg ASE_SUITE_URL=
-#   Trial:   https://www.sap.com/products/data-cloud/sybase-ase/trial.html
-#   Linux:   https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
-#   Windows: https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.winx64.zip
+# SAP rotates this CloudFront URL periodically — see README
+# "Refreshing the SAP installer URL" if the build starts failing.
 ARG ASE_SUITE_URL=https://d1cuw2q49dpd0p.cloudfront.net/ASE16/Current/ASE_Suite.linuxamd64.tgz
 
 
@@ -22,12 +16,11 @@ FROM --platform=linux/amd64 rockylinux:9 AS builder
 
 ARG ASE_SUITE_URL
 
-# SAP installer build deps
-# - libaio: ASE links against it even with async I/O disabled at runtime
-# - gtk2: InstallAnywhere loads gtk libs at startup even in silent mode
-# - glibc.i686: setup.bin and a few legacy ASE tools are 32-bit
-# - findutils: rockylinux minimal does not ship find/xargs, used by the
-#   setup.bin discovery below
+# - libaio:     ASE links against it even with async I/O disabled.
+# - gtk2:       InstallAnywhere loads gtk libs even in silent mode.
+# - glibc.i686: setup.bin and a few legacy ASE tools are 32-bit.
+# - findutils:  rockylinux minimal does not ship find; used to locate
+#               setup.bin in the tarball below.
 RUN dnf install -y libaio gtk2 glibc.i686 findutils \
  && dnf clean all
 
@@ -39,12 +32,11 @@ RUN set -x \
 
 COPY assets/* /opt/tmp/
 
-# Install Sybase. The SAP tarball contains several setup.bin (one per
-# product: ASE itself, SySAM license manager, possibly OCS, etc.). The
-# top-level directory naming also drifts between releases, so locate
-# the ASE installer dynamically: exclude sysam_setup/, then pick the
-# first remaining match. Run it from its own directory because the
-# InstallAnywhere LAX runtime resolves its resources relative to cwd.
+# The tarball contains several setup.bin (ASE, SySAM, FaultManager, …)
+# under directory names that drift between releases — locate the ASE
+# one dynamically by excluding the known non-ASE installers
+# (sysam_setup, FaultManager). Run it from its own directory because
+# the InstallAnywhere LAX runtime resolves resources relative to cwd.
 RUN set -ex \
  && ALL_SETUPS="$(find /opt/tmp -maxdepth 3 -name setup.bin -type f)" \
  && SETUP_BIN="$(echo "$ALL_SETUPS" | grep -ivE 'sysam|faultmanager' | head -1)" \
@@ -61,11 +53,11 @@ RUN set -ex \
     -DAGREE_TO_SAP_LICENSE=true \
     -DRUN_SILENT=true
 
-# All post-install steps below resolve the ASE install directory from
-# $SYBASE_ASE (set by SYBASE.sh), so they keep working when SAP bumps
-# the SP and installs under a different versioned dir than ASE-16_0.
-# The .rs templates in assets/ also have internal /opt/sybase/ASE-16_0
-# references (errorlog, tape_config_file); rewrite them before srvbuildres
+# Resolve the ASE install dir from $SYBASE_ASE (set by SYBASE.sh) so
+# everything below keeps working when SAP bumps the SP and installs
+# under a different versioned dir (ASE-16_1 instead of ASE-16_0). The
+# .rs templates also contain internal /opt/sybase/ASE-16_0 references
+# (errorlog, tape_config_file) — rewrite those before srvbuildres
 # consumes them.
 RUN source /opt/sybase/SYBASE.sh \
  && sed -i "s|/opt/sybase/ASE-16_0|/opt/sybase/${SYBASE_ASE}|g" \
@@ -73,38 +65,33 @@ RUN source /opt/sybase/SYBASE.sh \
  && cp /opt/tmp/sybase-ase.rs /opt/sybase/${SYBASE_ASE}/sybase-ase.rs \
  && cp /opt/tmp/sybase-bs.rs  /opt/sybase/${SYBASE_ASE}/sybase-bs.rs
 
-# Build ASE server
 RUN source /opt/sybase/SYBASE.sh \
  && /opt/sybase/${SYBASE_ASE}/bin/srvbuildres -r /opt/sybase/${SYBASE_ASE}/sybase-ase.rs
 
-# Disable async I/O (kAIO often unavailable / misbehaving in Docker)
+# kAIO is often unavailable or misbehaving in Docker.
 RUN source /opt/sybase/SYBASE.sh \
  && sed -i 's|allow sql server async i/o = DEFAULT|allow sql server async i/o = 0|g' \
         /opt/sybase/${SYBASE_ASE}/MYSYBASE.cfg
 
-# Add trace flag -T11889 to RUN_MYSYBASE (workaround for tempdb default
-# segment check that prevents ASE Dev Edition from starting in some envs)
+# -T11889 disables a tempdb default-segment check that prevents Dev
+# Edition from starting in some envs.
 RUN source /opt/sybase/SYBASE.sh \
  && sed -i '$ d' /opt/sybase/${SYBASE_ASE}/install/RUN_MYSYBASE \
  && echo "-T11889" >> /opt/sybase/${SYBASE_ASE}/install/RUN_MYSYBASE \
  && sed -i 's|-T11889|-T11889 \\|g' /opt/sybase/${SYBASE_ASE}/install/RUN_MYSYBASE
 
-# Build Backup Server
 RUN source /opt/sybase/SYBASE.sh \
  && /opt/sybase/${SYBASE_ASE}/bin/srvbuildres -r /opt/sybase/${SYBASE_ASE}/sybase-bs.rs
 
-# Install the custom interfaces file and entrypoint script into the
-# layout the runtime stage will COPY from.
 RUN mv /opt/sybase/interfaces /opt/sybase/interfaces.backup \
  && cp /opt/tmp/interfaces /opt/sybase/ \
  && cp /opt/tmp/sybase-entrypoint.sh /usr/local/bin/ \
  && chmod +x /usr/local/bin/sybase-entrypoint.sh
 
-# Trim ~1.25 GB from /opt/sybase that the runtime stage does not need.
-# Mostly diag* debug builds of dataserver/backupserver/xpserver (400 MB
-# of diagserver alone), several copies of bundled JREs that only the
-# Java-based SAP admin tools use, the JDBC driver, dev libs (we ship
-# only the runtime shared libs), and installer leftovers.
+# Trim ~1.25 GB the runtime stage does not need: diag* debug builds of
+# dataserver/backupserver/xpserver (400 MB of diagserver alone), bundled
+# JREs used only by the Java-based SAP admin tools, the JDBC driver,
+# dev libs (we ship only the runtime shared libs), installer leftovers.
 RUN set -ex \
  && rm -rf /opt/sybase/sybuninstall \
            /opt/sybase/jre64 \
@@ -128,10 +115,8 @@ RUN set -ex \
 # ============================================================
 FROM --platform=linux/amd64 rockylinux:9
 
-LABEL org.opencontainers.image.authors="Tuan Vo <vohungtuan@gmail.com>"
-
-# Runtime deps. procps-ng for `ps`, which for diagnostics inside the
-# container (both used by the CI smoke test and by users).
+# procps-ng provides `ps`, and `which` is used for diagnostics inside
+# the container (both by the CI smoke test and by users at the prompt).
 RUN dnf install -y libaio gtk2 glibc.i686 procps-ng which \
  && dnf clean all
 
@@ -139,19 +124,15 @@ COPY --from=builder /opt/sybase /opt/sybase
 COPY --from=builder /usr/local/bin/sybase-entrypoint.sh /usr/local/bin/
 RUN ln -s /usr/local/bin/sybase-entrypoint.sh /sybase-entrypoint.sh
 
-# Auto-source SYBASE.sh in every interactive shell so `docker exec -it
-# <container> bash` has isql / dataserver / SYBASE_ASE / etc. in the
-# environment without having to source it manually. /etc/profile.d/*.sh
-# is read by /etc/bashrc on Rocky, which is sourced by root's ~/.bashrc.
+# Auto-source SYBASE.sh in every interactive shell so `docker exec -it`
+# has isql / dataserver / $SYBASE_ASE / etc. without manual sourcing.
 RUN echo '. /opt/sybase/SYBASE.sh' > /etc/profile.d/sybase.sh
 
-# SAP's locales.dat does not know "C.UTF-8" (Rocky 9 default), and isql
+# SAP's locales.dat does not know Rocky 9's default C.UTF-8 and isql
 # refuses to start without a matching entry. Set en_US.UTF-8 in both
-# /etc/locale.conf (which /etc/profile.d/lang.sh sources for every
-# interactive login/non-login shell, overwriting any prior LANG value)
-# and ENV (for non-interactive contexts like the entrypoint and
-# `docker exec my-sybase bash -c '...'`). en_US.UTF-8 is in locales.dat
-# and matches the glibc-langpack-en pulled in as a dep above.
+# /etc/locale.conf (read by /etc/profile.d/lang.sh in interactive
+# shells, where it overwrites any prior LANG) and ENV (for the
+# entrypoint and `docker exec … bash -c '…'`).
 RUN echo 'LANG=en_US.UTF-8' > /etc/locale.conf
 ENV LANG=en_US.UTF-8
 
