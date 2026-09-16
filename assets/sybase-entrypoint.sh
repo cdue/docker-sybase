@@ -3,15 +3,12 @@
 export SYBASE=/opt/sybase
 source /opt/sybase/SYBASE.sh
 
-# Start the Backup Server in the background by invoking its RUN file
-# directly (the SAP `startserver` wrapper was dropped in newer SPs;
-# this mirrors how the dataserver is started just below).
+# Invoke the RUN files directly — the `startserver` wrapper was
+# dropped in newer SPs. Both servers run in background so we can poll
+# the log and run init SQL once the dataserver is up.
 sh ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE_BS > /dev/null &
+sh ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE    > /dev/null &
 
-# Start MYSYBASE (dataserver) in the background so we can run init SQL once it's up
-sh /opt/sybase/SYBASE.sh && sh ${SYBASE}/${SYBASE_ASE}/install/RUN_MYSYBASE > /dev/null &
-
-#waiting for sybase to start
 export STATUS=0
 i=1
 echo ===============  WAITING FOR master.dat SPACE ALLOCATION ==========================
@@ -74,12 +71,11 @@ else
 	echo "SYBASE_TEMPDB_SIZE: $SYBASE_TEMPDB_SIZE"
 fi
 
-# "Finished initialization." in MYSYBASE.log is necessary but not sufficient
-# — there is a window between that log line and the TCP listener actually
-# accepting connections, during which `isql` fails with ct_connect(). Probe
-# the listener with a real round-trip and only proceed once the server
-# answers, otherwise init1.sql / init2.sql silently fail (ct_connect) and
-# we'd still log "SYBASE INITIALIZED" at the end.
+# "Finished initialization." in MYSYBASE.log is necessary but not
+# sufficient — there is a window before the TCP listener accepts
+# connections, during which `isql` fails with ct_connect(). Probe the
+# listener with a real round-trip; without it, init1.sql / init2.sql
+# silently fail and we'd still log "SYBASE INITIALIZED" at the end.
 echo ===============  WAITING FOR LISTENER ==========================
 k=0
 while (( k < 60 )); do
@@ -151,10 +147,8 @@ echo =============== CREATING LOGIN/PWD ==========================
 cat <<-EOSQL > init1.sql
 use master
 go
--- Relax password policy server-wide so any SYBASE_PASSWORD override
--- works regardless of length. The default of 8 made short passwords
--- (e.g. SYBASE_PASSWORD=short) silently break the create login
--- below. Server-wide, persisted in master.dat, idempotent.
+-- Default 'minimum password length' is 8, which silently breaks the
+-- create login below for any short SYBASE_PASSWORD override.
 sp_configure 'minimum password length', 0
 go
 ${TEMPDB_SQL}
@@ -215,8 +209,7 @@ ${SYBASE}/${SYBASE_OCS}/bin/isql -Usa -PmyPassword -SMYSYBASE -i"./init2.sql" ||
 
 echo =============== SYBASE INITIALIZED ==========================
 
-#trap
 while [ "$END" == '' ]; do
-			sleep 1
-			trap "/etc/init.d/sybase stop && END=1" INT TERM
+	sleep 1
+	trap "/etc/init.d/sybase stop && END=1" INT TERM
 done
